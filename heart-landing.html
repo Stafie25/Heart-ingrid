@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Love You ❤️</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #060000;
+    overflow: hidden;
+    height: 100vh;
+    width: 100vw;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  canvas {
+    position: absolute;
+    top: 0; left: 0;
+  }
+
+
+</style>
+</head>
+<body>
+
+<canvas id="c"></canvas>
+
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+
+let W, H, CX, CY, R;
+let particles = [];
+
+const TEXTS = [
+  'i love you', 'i love you', 'i love you',
+  'love you', 'I love you', 'i love you',
+];
+
+function resize() {
+  W = canvas.width  = window.innerWidth;
+  H = canvas.height = window.innerHeight;
+  CX = W / 2;
+  CY = H / 2;
+  R  = Math.min(W, H) * 0.43;
+}
+
+// Heart equation in screen coords (point at bottom)
+function insideHeart(nx, ny) {
+  const x = nx;
+  const y = -(ny - 0.18); // flip + shift up slightly
+  const lhs = Math.pow(x * x + y * y - 1, 3);
+  const rhs = x * x * Math.pow(y, 3);
+  return lhs - rhs <= 0.005;
+}
+
+// Map distance from center → brightness/color
+function heartColor(dist) {
+  const hue   = 0 + Math.random() * 18;          // deep red to red-orange
+  const light  = 28 + (1 - dist) * 38 + Math.random() * 12;
+  return `hsl(${hue}, 100%, ${light}%)`;
+}
+
+function buildParticles() {
+  particles = [];
+  const step = Math.max(20, Math.min(W, H) * 0.038);
+
+  for (let px = CX - R * 1.25; px <= CX + R * 1.25; px += step) {
+    for (let py = CY - R * 1.25; py <= CY + R * 1.25; py += step) {
+      const nx = (px - CX) / R;
+      const ny = (py - CY) / R;
+
+      if (!insideHeart(nx, ny)) continue;
+
+      const dist = Math.sqrt(nx * nx + ny * ny);
+      const jit  = step * 0.35;
+
+      particles.push({
+        x:    px + (Math.random() - 0.5) * jit,
+        y:    py + (Math.random() - 0.5) * jit,
+        text: TEXTS[Math.floor(Math.random() * TEXTS.length)],
+        size: 8 + Math.random() * 5,
+        dist,
+        color:  heartColor(dist),
+        glow:   0.3 + Math.random() * 0.7,
+        target: 0.45 + Math.random() * 0.55,
+        delay:  Math.random() * 2800,
+        opacity: 0,
+      });
+    }
+  }
+
+  // Random reveal order
+  particles.sort(() => Math.random() - 0.5);
+}
+
+function init() {
+  resize();
+  buildParticles();
+}
+
+init();
+window.addEventListener('resize', () => { init(); });
+
+// ─── Main loop ────────────────────────────────────────────────
+let t0 = null;
+
+function frame(ts) {
+  if (!t0) t0 = ts;
+  const elapsed = ts - t0;
+
+  // Gentle micro-beat (luminozitate subtila)
+  const beat =
+    0.88 +
+    0.07 * Math.sin(elapsed / 700) +
+    0.05 * Math.sin(elapsed / 350);
+
+  // Puls lent dupa ce inima s-a format complet (~3.5s)
+  // Fade 30% → 100% → 30% cu perioada ~7s
+  let slowPulse = 1.0;
+  if (elapsed > 3500) {
+    const pe = elapsed - 3500;
+    slowPulse = 0.75 + 0.25 * Math.cos(pe / 796);
+    // rezultat: oscileaza intre 0.50 si 1.00, perioada ~5s
+  }
+
+  const globalFade = beat * slowPulse;
+
+  // Clear
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = '#060000';
+  ctx.fillRect(0, 0, W, H);
+
+  // Big radial glow behind heart
+  const r1 = ctx.createRadialGradient(CX, CY - R * 0.05, 0, CX, CY, R * 1.1);
+  r1.addColorStop(0,   `rgba(200, 10, 10, ${0.22 * globalFade})`);
+  r1.addColorStop(0.35,`rgba(140,  0,  0, ${0.14 * globalFade})`);
+  r1.addColorStop(0.7, `rgba( 60,  0,  0, ${0.07 * globalFade})`);
+  r1.addColorStop(1,   'rgba(0,0,0,0)');
+  ctx.fillStyle = r1;
+  ctx.fillRect(0, 0, W, H);
+
+  // ─── Draw text particles ───────────────────────────────────
+  for (const p of particles) {
+    if (elapsed < p.delay) continue;
+
+    const prog = Math.min(1, (elapsed - p.delay) / 500);
+    p.opacity  = prog * p.target;
+
+    const alpha = p.opacity * globalFade;
+    const glow  = p.glow * globalFade;
+
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.shadowColor = `rgba(255, 60, 0, ${glow * 0.85})`;
+    ctx.shadowBlur  = 10 * glow;
+    ctx.fillStyle   = p.color;
+    ctx.font        = `${p.size}px 'Courier New', monospace`;
+    ctx.fillText(p.text, p.x, p.y);
+    ctx.restore();
+  }
+
+  // Hot centre bloom
+  const bloom = ctx.createRadialGradient(CX, CY - R * 0.08, 0, CX, CY - R * 0.08, R * 0.45);
+  bloom.addColorStop(0,   `rgba(255, 120, 80, ${0.18 * globalFade})`);
+  bloom.addColorStop(0.5, `rgba(200,  40, 10, ${0.09 * globalFade})`);
+  bloom.addColorStop(1,   'rgba(0,0,0,0)');
+  ctx.fillStyle = bloom;
+  ctx.fillRect(0, 0, W, H);
+
+  // "i love you Ingrid" — rosu mai deschis, fade-in dupa 2.2s, pulseaza cu inima
+  if (elapsed > 2200) {
+    const appear    = Math.min(1, (elapsed - 2200) / 1000);
+    const textAlpha = appear * globalFade;
+    const fontSize  = Math.max(22, Math.min(W, H) * 0.042);
+    ctx.save();
+    ctx.globalAlpha  = textAlpha;
+    ctx.shadowColor  = 'rgba(255, 100, 80, 0.9)';
+    ctx.shadowBlur   = 28;
+    ctx.fillStyle    = 'hsl(5, 100%, 68%)';
+    ctx.font         = `bold ${fontSize}px Georgia, serif`;
+    ctx.textAlign    = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('i love you Ingrid', CX, CY + R * 0.08);
+    ctx.restore();
+  }
+
+  requestAnimationFrame(frame);
+}
+
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
